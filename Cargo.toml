@@ -9,10 +9,12 @@ edition = "2021"
 serde = { version = "1", default-features = false }
 
 [features]
-default = ["std"]
+default = ["all"]
+all = ["std", "compact-nums"]
 alloc = ["serde/alloc"]
 std = ["alloc", "serde/std"]
-test-utils = ["std", "serde/derive"]
+compact-nums = []
+test-utils = ["all", "serde/derive"]
 
 [dev-dependencies]
 rsbin = { path = ".", features = ["test-utils"] }
