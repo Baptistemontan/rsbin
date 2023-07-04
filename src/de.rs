@@ -1,10 +1,10 @@
 use crate::{
-    error::{NoRWError, UnexpectedTag},
-    read::Read,
+    error::{EndOfBuff, NoRWError, UnexpectedTag},
+    read::{BuffReader, Read},
     tag::Tag,
 };
-use serde::de::Visitor;
 use serde::{de, serde_if_integer128};
+use serde::{de::Visitor, Deserialize};
 
 pub type Error<Re = NoRWError> = crate::error::DeError<Re>;
 pub type Result<T, Re = NoRWError> = core::result::Result<T, Error<Re>>;
@@ -12,6 +12,14 @@ pub type Result<T, Re = NoRWError> = core::result::Result<T, Error<Re>>;
 pub struct Deserializer<R> {
     reader: R,
     peeked_tag: Option<Tag>,
+}
+
+pub fn from_bytes<'de, T: ?Sized>(bytes: &'de [u8]) -> core::result::Result<T, Error<EndOfBuff>>
+where
+    T: Deserialize<'de>,
+{
+    let mut de = Deserializer::new(BuffReader::new(bytes));
+    T::deserialize(&mut de)
 }
 
 macro_rules! match_tag {
@@ -69,6 +77,13 @@ macro_rules! implement_number {
 }
 
 impl<'de, R: Read<'de>> Deserializer<R> {
+    fn new(reader: R) -> Self {
+        Deserializer {
+            reader,
+            peeked_tag: None,
+        }
+    }
+
     fn pop_tag(&mut self) -> Result<Tag, R::Error> {
         if let Some(tag) = self.peeked_tag.take() {
             Ok(tag)
@@ -557,9 +572,13 @@ impl<'a, 'de: 'a, R: Read<'de>> de::VariantAccess<'de> for &'a mut Deserializer<
     where
         V: Visitor<'de>,
     {
+        use de::Deserializer;
         match_tag! {
             self.pop_tag()?,
-            Tag::TupleVariant => visitor.visit_seq(SeqDeserializer::new(self, Some(len)))
+            Tag::TupleVariant => {
+                self.peeked_tag = Some(Tag::Tuple);
+                self.deserialize_tuple(len, visitor)
+            }
         }
     }
 
@@ -571,9 +590,13 @@ impl<'a, 'de: 'a, R: Read<'de>> de::VariantAccess<'de> for &'a mut Deserializer<
     where
         V: Visitor<'de>,
     {
+        use de::Deserializer;
         match_tag! {
             self.pop_tag()?,
-            Tag::StructVariant => visitor.visit_seq(SeqDeserializer::new(self, Some(fields.len())))
+            Tag::StructVariant => {
+                self.peeked_tag = Some(Tag::Struct);
+                self.deserialize_struct("", fields, visitor)
+            }
         }
     }
 }
