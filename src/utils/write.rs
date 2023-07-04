@@ -1,4 +1,3 @@
-use core::fmt::{Debug, Display};
 use core::ops::{Deref, DerefMut};
 
 #[cfg(feature = "alloc")]
@@ -9,10 +8,10 @@ use alloc::vec::Vec;
 #[cfg(feature = "std")]
 use std::io;
 
-use crate::error::{NoWriterError, WriterError};
+use crate::error::{EndOfBuff, NoRWError, RWError};
 
 pub trait Write {
-    type Error: WriterError;
+    type Error: RWError;
 
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<usize, Self::Error>;
 
@@ -23,7 +22,7 @@ pub trait Write {
 
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 impl<'a> Write for &'a mut Vec<u8> {
-    type Error = NoWriterError;
+    type Error = NoRWError;
 
     fn write_byte(&mut self, byte: u8) -> Result<usize, Self::Error> {
         self.push(byte);
@@ -91,18 +90,6 @@ impl<'a> DerefMut for BuffWriter<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct EndOfBuff;
-
-impl Display for EndOfBuff {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str("Reached end of buffer before end of serialization.")
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for EndOfBuff {}
-
 impl<'a, 'b> Write for &'a mut BuffWriter<'b> {
     type Error = EndOfBuff;
 
@@ -119,7 +106,7 @@ impl<'a, 'b> Write for &'a mut BuffWriter<'b> {
 pub struct DummyWriter;
 
 impl Write for DummyWriter {
-    type Error = NoWriterError;
+    type Error = NoRWError;
 
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
         Ok(bytes.len())

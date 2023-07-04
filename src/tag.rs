@@ -2,6 +2,10 @@ use core::fmt::Display;
 
 pub const UNSIZED_STRING_END_MARKER: [u8; 2] = [0xD8, 0x00];
 
+pub fn end_of_str(bytes: &[u8; 2]) -> bool {
+    bytes == &UNSIZED_STRING_END_MARKER
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 #[repr(u8)]
 pub enum Tag {
@@ -24,8 +28,8 @@ pub enum Tag {
     Char3 = 16,
     Char4 = 17,
     String = 18,
-    NullTerminatedString = 19,
-    ByteArray = 20,
+    MarkerTerminatedString = 19,
+    Bytes = 20,
     Unit = 21,
     UnitStruct = 22,
     UnitVariant = 23,
@@ -41,7 +45,9 @@ pub enum Tag {
     UnsizedMap = 33,
     Struct = 34,
     StructVariant = 35,
+    #[cfg(not(no_integer128))]
     I128 = 36,
+    #[cfg(not(no_integer128))]
     U128 = 37,
 }
 
@@ -118,8 +124,8 @@ impl TryFrom<u8> for Tag {
             16 => Ok(Tag::Char3),
             17 => Ok(Tag::Char4),
             18 => Ok(Tag::String),
-            19 => Ok(Tag::NullTerminatedString),
-            20 => Ok(Tag::ByteArray),
+            19 => Ok(Tag::MarkerTerminatedString),
+            20 => Ok(Tag::Bytes),
             21 => Ok(Tag::Unit),
             22 => Ok(Tag::UnitStruct),
             23 => Ok(Tag::UnitVariant),

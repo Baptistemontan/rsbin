@@ -1,15 +1,15 @@
-use crate::error::{NoWriterError, SerError};
+use crate::error::{EndOfBuff, NoRWError};
 use crate::tag::{Tag, UNSIZED_STRING_END_MARKER};
-use crate::utils::write::{BuffWriter, DummyWriter, EndOfBuff, Write};
+use crate::utils::write::{BuffWriter, DummyWriter, Write};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 use core::fmt;
-use serde::ser::{Error, SerializeMap};
 use serde::{ser, serde_if_integer128, Serialize};
 #[cfg(feature = "std")]
 use std::io;
 
-pub type Result<T, We = NoWriterError> = core::result::Result<T, SerError<We>>;
+pub type Error<We = NoRWError> = crate::error::SerError<We>;
+pub type Result<T, We = NoRWError> = core::result::Result<T, Error<We>>;
 
 pub struct Serializer<W> {
     writer: W,
@@ -145,7 +145,7 @@ macro_rules! implement_number {
 impl<'a, W: Write> ser::Serializer for &'a mut Serializer<W> {
     type Ok = usize;
 
-    type Error = SerError<W::Error>;
+    type Error = Error<W::Error>;
 
     type SerializeSeq = SeqSerializer<'a, W>;
 
@@ -193,7 +193,7 @@ impl<'a, W: Write> ser::Serializer for &'a mut Serializer<W> {
     }
 
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, W::Error> {
-        self.write_tag_then_seq(Tag::ByteArray, v)
+        self.write_tag_then_seq(Tag::Bytes, v)
     }
 
     fn serialize_none(self) -> Result<Self::Ok, W::Error> {
@@ -329,15 +329,17 @@ impl<'a, W: Write> ser::Serializer for &'a mut Serializer<W> {
     where
         T: fmt::Display,
     {
+        // just bring the trait in scope but naming don't matter
+        use ser::Error as _;
         // unknown str length marker
-        let mut wb = self.write_tag(Tag::NullTerminatedString)?;
+        let mut wb = self.write_tag(Tag::MarkerTerminatedString)?;
         let mut collector = StrCollector::new(&mut self.writer);
         if fmt::write(&mut collector, format_args!("{}", value)).is_err() {
             let err = match collector.error {
-                Some(err) => SerError::WriterError(err),
+                Some(err) => Error::WriteError(err),
                 // what ? unreachable!() would be the right choice but I want panic free and I don't know if compiler can optimise that away
                 // so custom it is
-                None => SerError::custom("Something went really wrong."),
+                None => Error::custom("Something went really wrong."),
             };
             return Err(err);
         }
@@ -382,7 +384,7 @@ impl<'a, W: Write> SeqSerializer<'a, W> {
 impl<'a, W: Write> ser::SerializeSeq for SeqSerializer<'a, W> {
     type Ok = usize;
 
-    type Error = SerError<W::Error>;
+    type Error = Error<W::Error>;
 
     fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), W::Error>
     where
@@ -399,7 +401,7 @@ impl<'a, W: Write> ser::SerializeSeq for SeqSerializer<'a, W> {
 impl<'a, W: Write> ser::SerializeTuple for SeqSerializer<'a, W> {
     type Ok = usize;
 
-    type Error = SerError<W::Error>;
+    type Error = Error<W::Error>;
 
     fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), W::Error>
     where
@@ -416,7 +418,7 @@ impl<'a, W: Write> ser::SerializeTuple for SeqSerializer<'a, W> {
 impl<'a, W: Write> ser::SerializeTupleStruct for SeqSerializer<'a, W> {
     type Ok = usize;
 
-    type Error = SerError<W::Error>;
+    type Error = Error<W::Error>;
 
     fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), W::Error>
     where
@@ -433,7 +435,7 @@ impl<'a, W: Write> ser::SerializeTupleStruct for SeqSerializer<'a, W> {
 impl<'a, W: Write> ser::SerializeTupleVariant for SeqSerializer<'a, W> {
     type Ok = usize;
 
-    type Error = SerError<W::Error>;
+    type Error = Error<W::Error>;
 
     fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), W::Error>
     where
@@ -450,7 +452,7 @@ impl<'a, W: Write> ser::SerializeTupleVariant for SeqSerializer<'a, W> {
 impl<'a, W: Write> ser::SerializeMap for SeqSerializer<'a, W> {
     type Ok = usize;
 
-    type Error = SerError<W::Error>;
+    type Error = Error<W::Error>;
 
     fn serialize_key<T: ?Sized>(&mut self, key: &T) -> Result<(), W::Error>
     where
@@ -474,12 +476,13 @@ impl<'a, W: Write> ser::SerializeMap for SeqSerializer<'a, W> {
 impl<'a, W: Write> ser::SerializeStruct for SeqSerializer<'a, W> {
     type Ok = usize;
 
-    type Error = SerError<W::Error>;
+    type Error = Error<W::Error>;
 
     fn serialize_field<T: ?Sized>(&mut self, key: &'static str, value: &T) -> Result<(), W::Error>
     where
         T: Serialize,
     {
+        use ser::SerializeMap;
         self.serialize_entry(key, value)
     }
 
@@ -491,12 +494,13 @@ impl<'a, W: Write> ser::SerializeStruct for SeqSerializer<'a, W> {
 impl<'a, W: Write> ser::SerializeStructVariant for SeqSerializer<'a, W> {
     type Ok = usize;
 
-    type Error = SerError<W::Error>;
+    type Error = Error<W::Error>;
 
     fn serialize_field<T: ?Sized>(&mut self, key: &'static str, value: &T) -> Result<(), W::Error>
     where
         T: Serialize,
     {
+        use ser::SerializeMap;
         self.serialize_entry(key, value)
     }
 
