@@ -14,11 +14,19 @@ pub struct Deserializer<R> {
     peeked_tag: Option<Tag>,
 }
 
-pub fn from_bytes<'de, T: ?Sized>(bytes: &'de [u8]) -> core::result::Result<T, Error<EndOfBuff>>
+pub fn from_bytes<'de, T>(bytes: &'de [u8]) -> core::result::Result<T, Error<EndOfBuff>>
 where
     T: Deserialize<'de>,
 {
-    let mut de = Deserializer::new(BuffReader::new(bytes));
+    from_reader(BuffReader::new(bytes))
+}
+
+pub fn from_reader<'de, T, R>(reader: R) -> core::result::Result<T, Error<R::Error>>
+where
+    T: Deserialize<'de>,
+    R: Read<'de>,
+{
+    let mut de = Deserializer::new(reader);
     T::deserialize(&mut de)
 }
 
