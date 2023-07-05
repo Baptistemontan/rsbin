@@ -135,18 +135,6 @@ impl<E: RWError> de::Error for DeError<E> {
     }
 }
 
-impl<E: RWError> From<TagParsingError> for DeError<E> {
-    fn from(value: TagParsingError) -> Self {
-        DeError::TagParsingError(value)
-    }
-}
-
-impl<E: RWError> From<UnexpectedTag> for DeError<E> {
-    fn from(value: UnexpectedTag) -> Self {
-        DeError::UnexpectedTag(value)
-    }
-}
-
 impl<E: RWError> From<E> for DeError<E> {
     fn from(value: E) -> Self {
         DeError::ReaderError(value)

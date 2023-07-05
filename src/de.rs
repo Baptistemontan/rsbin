@@ -89,8 +89,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
             Ok(tag)
         } else {
             let byte = self.reader.read_byte()?;
-            let tag = byte.try_into()?;
-            Ok(tag)
+            byte.try_into().map_err(Error::TagParsingError)
         }
     }
 
@@ -106,8 +105,45 @@ impl<'de, R: Read<'de>> Deserializer<R> {
 
     fn pop_n<const N: usize>(&mut self) -> Result<[u8; N], R::Error> {
         let mut buff = [0; N];
-        self.reader.read_bytes(&mut buff)?;
+        self.reader.read_to_buff(&mut buff)?;
         Ok(buff)
+    }
+
+    #[cfg(feature = "alloc")]
+    fn convert_bytes_cow_to_str(
+        bytes: alloc::borrow::Cow<'_, [u8]>,
+    ) -> core::result::Result<alloc::borrow::Cow<'_, str>, core::str::Utf8Error> {
+        use alloc::borrow::Cow;
+        match bytes {
+            Cow::Borrowed(bytes) => core::str::from_utf8(bytes).map(Cow::Borrowed),
+            Cow::Owned(bytes) => alloc::string::String::from_utf8(bytes)
+                .map(Cow::Owned)
+                .map_err(|err| err.utf8_error()),
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    fn pop_str(&mut self, len: usize) -> Result<alloc::borrow::Cow<'de, str>, R::Error> {
+        let bytes = self.reader.read_bytes(len)?;
+        Self::convert_bytes_cow_to_str(bytes).map_err(Error::Utf8Error)
+    }
+
+    #[cfg(not(feature = "alloc"))]
+    fn pop_str(&mut self, len: usize) -> Result<&'de str, R::Error> {
+        let bytes = self.reader.read_bytes(len)?;
+        core::str::from_utf8(bytes).map_err(Error::Utf8Error)
+    }
+
+    #[cfg(feature = "alloc")]
+    fn pop_unsized_str(&mut self) -> Result<alloc::borrow::Cow<'de, str>, R::Error> {
+        let bytes = self.reader.read_bytes_until(crate::tag::end_of_str)?;
+        Self::convert_bytes_cow_to_str(bytes).map_err(Error::Utf8Error)
+    }
+
+    #[cfg(not(feature = "alloc"))]
+    fn pop_unsized_str(&mut self) -> Result<&'de str, R::Error> {
+        let bytes = self.reader.read_bytes_until(crate::tag::end_of_str)?;
+        core::str::from_utf8(bytes).map_err(Error::Utf8Error)
     }
 
     fn pop_len(&mut self) -> Result<usize, R::Error> {
@@ -283,10 +319,25 @@ impl<'a, 'de, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
             self.pop_tag()?,
             Tag::String => {
                 let len = self.pop_len()?;
-                self.reader.deserialize_str(len, visitor)
+                let str = self.pop_str(len)?;
+                #[cfg(feature = "alloc")]
+                match str {
+                    alloc::borrow::Cow::Borrowed(str) => visitor.visit_borrowed_str(str),
+                    alloc::borrow::Cow::Owned(string) => visitor.visit_string(string)
+                }
+                #[cfg(not(feature = "alloc"))]
+                visitor.visit_borrowed_str(str)
+
             },
             Tag::MarkerTerminatedString => {
-                self.reader.deserialize_unknown_len_str(visitor, crate::tag::end_of_str)
+                let str = self.pop_unsized_str()?;
+                #[cfg(feature = "alloc")]
+                match str {
+                    alloc::borrow::Cow::Borrowed(str) => visitor.visit_borrowed_str(str),
+                    alloc::borrow::Cow::Owned(string) => visitor.visit_string(string)
+                }
+                #[cfg(not(feature = "alloc"))]
+                visitor.visit_borrowed_str(str)
             }
         }
     }
@@ -306,7 +357,14 @@ impl<'a, 'de, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
             self.pop_tag()?,
             Tag::Bytes => {
                 let len = self.pop_len()?;
-                self.reader.deserialize_bytes(len, visitor)
+                let bytes = self.reader.read_bytes(len)?;
+                #[cfg(feature = "alloc")]
+                match bytes {
+                    alloc::borrow::Cow::Borrowed(bytes) => visitor.visit_borrowed_bytes(bytes),
+                    alloc::borrow::Cow::Owned(bytes) => visitor.visit_byte_buf(bytes)
+                }
+                #[cfg(not(feature = "alloc"))]
+                visitor.visit_borrowed_bytes(bytes)
             }
         }
     }
@@ -460,7 +518,14 @@ impl<'a, 'de, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
             },
             Tag::String => {
                 let len = self.pop_len()?;
-                self.reader.deserialize_str(len, visitor)
+                let str = self.pop_str(len)?;
+                #[cfg(feature = "alloc")]
+                match str {
+                    alloc::borrow::Cow::Borrowed(str) => visitor.visit_borrowed_str(str),
+                    alloc::borrow::Cow::Owned(string) => visitor.visit_string(string)
+                }
+                #[cfg(not(feature = "alloc"))]
+                visitor.visit_borrowed_str(str)
             }
         }
     }

@@ -1,38 +1,36 @@
-use serde::de::Visitor;
+#[cfg(feature = "alloc")]
+use alloc::borrow::Cow;
 
-use crate::error::{DeError, EndOfBuff, RWError};
+use crate::error::{EndOfBuff, RWError};
 
 pub trait Read<'de> {
     type Error: RWError;
 
-    fn read_bytes(&mut self, buff: &mut [u8]) -> Result<(), Self::Error>;
+    fn read_to_buff(&mut self, buff: &mut [u8]) -> Result<(), Self::Error>;
 
     fn read_byte(&mut self) -> Result<u8, Self::Error> {
         let mut byte = 0;
-        self.read_bytes(core::slice::from_mut(&mut byte))?;
+        self.read_to_buff(core::slice::from_mut(&mut byte))?;
         Ok(byte)
     }
 
-    fn deserialize_str<V: Visitor<'de>>(
-        &mut self,
-        len: usize,
-        visitor: V,
-    ) -> Result<V::Value, DeError<Self::Error>>;
+    #[cfg(feature = "alloc")]
+    fn read_bytes(&mut self, len: usize) -> Result<Cow<'de, [u8]>, Self::Error>;
 
-    fn deserialize_bytes<V: Visitor<'de>>(
-        &mut self,
-        len: usize,
-        visitor: V,
-    ) -> Result<V::Value, DeError<Self::Error>>;
+    #[cfg(not(feature = "alloc"))]
+    fn read_bytes(&mut self, len: usize) -> Result<&'de [u8], Self::Error>;
 
-    fn deserialize_unknown_len_str<V, F>(
+    #[cfg(feature = "alloc")]
+    fn read_bytes_until(
         &mut self,
-        visitor: V,
-        end_of_str: F,
-    ) -> Result<V::Value, DeError<Self::Error>>
-    where
-        V: Visitor<'de>,
-        F: Fn(&[u8; 2]) -> bool;
+        end_of_str: fn(&[u8; 2]) -> bool,
+    ) -> Result<Cow<'de, [u8]>, Self::Error>;
+
+    #[cfg(not(feature = "alloc"))]
+    fn read_bytes_until(
+        &mut self,
+        end_of_str: fn(&[u8; 2]) -> bool,
+    ) -> Result<&'de [u8], Self::Error>;
 }
 
 pub struct BuffReader<'de> {
@@ -44,7 +42,7 @@ impl<'de> BuffReader<'de> {
         BuffReader { buff }
     }
 
-    pub fn pop_slice(&mut self, len: usize) -> Result<&'de [u8], EndOfBuff> {
+    fn pop_slice(&mut self, len: usize) -> Result<&'de [u8], EndOfBuff> {
         if self.buff.len() < len {
             Err(EndOfBuff)
         } else {
@@ -52,6 +50,15 @@ impl<'de> BuffReader<'de> {
             self.buff = rest;
             Ok(popped)
         }
+    }
+
+    fn read_until(&mut self, end_of_str: fn(&[u8; 2]) -> bool) -> Result<&'de [u8], EndOfBuff> {
+        let len = self
+            .buff
+            .windows(2)
+            .position(|bytes| end_of_str(bytes.try_into().unwrap()))
+            .ok_or(EndOfBuff)?;
+        self.pop_slice(len)
     }
 }
 
@@ -64,45 +71,35 @@ impl<'de> Read<'de> for BuffReader<'de> {
         Ok(*first)
     }
 
-    fn read_bytes(&mut self, buff: &mut [u8]) -> Result<(), Self::Error> {
+    fn read_to_buff(&mut self, buff: &mut [u8]) -> Result<(), Self::Error> {
         let to_copy = self.pop_slice(buff.len())?;
         buff.copy_from_slice(to_copy);
         Ok(())
     }
 
-    fn deserialize_str<V: Visitor<'de>>(
-        &mut self,
-        len: usize,
-        visitor: V,
-    ) -> Result<V::Value, DeError<Self::Error>> {
-        let str = self.pop_slice(len)?;
-        let str = core::str::from_utf8(str).map_err(DeError::Utf8Error)?;
-        visitor.visit_borrowed_str(str)
+    #[cfg(feature = "alloc")]
+    fn read_bytes(&mut self, len: usize) -> Result<Cow<'de, [u8]>, Self::Error> {
+        self.pop_slice(len).map(Cow::Borrowed)
     }
 
-    fn deserialize_bytes<V: Visitor<'de>>(
-        &mut self,
-        len: usize,
-        visitor: V,
-    ) -> Result<V::Value, DeError<Self::Error>> {
-        let bytes = self.pop_slice(len)?;
-        visitor.visit_borrowed_bytes(bytes)
+    #[cfg(not(feature = "alloc"))]
+    fn read_bytes(&mut self, len: usize) -> Result<&'de [u8], Self::Error> {
+        self.pop_slice(len)
     }
 
-    fn deserialize_unknown_len_str<V, F>(
+    #[cfg(feature = "alloc")]
+    fn read_bytes_until(
         &mut self,
-        visitor: V,
-        end_of_str: F,
-    ) -> Result<V::Value, DeError<Self::Error>>
-    where
-        V: Visitor<'de>,
-        F: Fn(&[u8; 2]) -> bool,
-    {
-        let len = self
-            .buff
-            .windows(2)
-            .position(|bytes| end_of_str(bytes.try_into().unwrap()))
-            .ok_or(EndOfBuff)?;
-        self.deserialize_str(len, visitor)
+        end_of_str: fn(&[u8; 2]) -> bool,
+    ) -> Result<Cow<'de, [u8]>, Self::Error> {
+        self.read_until(end_of_str).map(Cow::Borrowed)
+    }
+
+    #[cfg(not(feature = "alloc"))]
+    fn read_bytes_until(
+        &mut self,
+        end_of_str: fn(&[u8; 2]) -> bool,
+    ) -> Result<&'de [u8], Self::Error> {
+        self.read_until(end_of_str)
     }
 }

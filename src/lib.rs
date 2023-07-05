@@ -18,7 +18,7 @@ pub use ser::{get_serialized_size, to_buff, to_writer, Serializer};
 pub use utils::read;
 pub use utils::write;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-utils"))]
 mod test {
     use serde::{Deserialize, Serialize};
 

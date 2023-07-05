@@ -32,19 +32,23 @@ pub enum Token<'a> {
     BorrowedBytes(&'a [u8]),
     Bytes(Vec<u8>),
     Unit,
+    #[allow(unused)]
     UnitStruct,
     UnitVariant,
     NewTypeStruct(Box<Self>),
     NewTypeVariant(Box<Self>),
     Seq(Vec<Self>),
     UnsizedSeq(Vec<Self>),
+    #[allow(unused)]
     Tuple(Vec<Self>),
+    #[allow(unused)]
     TupleStruct(Vec<Self>),
     TupleVariant(Vec<Self>),
     Map(Vec<(Self, Self)>),
     UnsizedMap(Vec<(Self, Self)>),
     Struct(HashMap<&'static str, Self>),
     StructVariant(HashMap<&'static str, Self>),
+    #[allow(unused)]
     StructVariantDeserialized(Vec<(Self, Self)>),
 }
 
