@@ -20,13 +20,14 @@ pub trait Read<'de> {
     #[cfg(not(feature = "alloc"))]
     fn read_bytes(&mut self, len: usize) -> Result<&'de [u8], Self::Error>;
 
-    /// The result Cow<[u8]> should contain the last 2 bytes passed to the `end_of_str` callback.
+    /// The result Cow<[u8]> should end with the last 2 bytes passed to the `end_of_str` callback.
     #[cfg(feature = "alloc")]
     fn read_bytes_until(
         &mut self,
         end_of_str: fn(&[u8; 2]) -> bool,
     ) -> Result<Cow<'de, [u8]>, Self::Error>;
 
+    /// The result Cow<[u8]> should end with the last 2 bytes passed to the `end_of_str` callback.
     #[cfg(not(feature = "alloc"))]
     fn read_bytes_until(
         &mut self,

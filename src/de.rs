@@ -136,13 +136,28 @@ impl<'de, R: Read<'de>> Deserializer<R> {
 
     #[cfg(feature = "alloc")]
     fn pop_unsized_str(&mut self) -> Result<alloc::borrow::Cow<'de, str>, R::Error> {
+        use alloc::borrow::Cow;
         let bytes = self.reader.read_bytes_until(crate::tag::end_of_str)?;
+        // Read::read_bytes_until contract states it has to end with the 2 bytes passed to the callback, so bytes.len() >= 2
+        let len = bytes.len() - 2;
+        // this part remove the 2 bytes of the string end marker.
+        let bytes = match bytes {
+            Cow::Owned(mut bytes) => {
+                bytes.truncate(len);
+                Cow::Owned(bytes)
+            }
+            Cow::Borrowed(bytes) => Cow::Borrowed(&bytes[..len]),
+        };
         Self::convert_bytes_cow_to_str(bytes).map_err(Error::Utf8Error)
     }
 
     #[cfg(not(feature = "alloc"))]
     fn pop_unsized_str(&mut self) -> Result<&'de str, R::Error> {
         let bytes = self.reader.read_bytes_until(crate::tag::end_of_str)?;
+        // Read::read_bytes_until contract states it has to end with the 2 bytes passed to the callback, so bytes.len() >= 2
+        let len = bytes.len() - 2;
+        // this part remove the 2 bytes of the string end marker.
+        let bytes = &bytes[..len];
         core::str::from_utf8(bytes).map_err(Error::Utf8Error)
     }
 
