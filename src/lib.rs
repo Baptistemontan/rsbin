@@ -10,6 +10,7 @@ pub mod ser;
 mod tag;
 mod utils;
 
+pub use de::{from_bytes, from_reader, Deserializer};
 pub use error::{DeError, NoRWError, SerError};
 #[cfg(feature = "alloc")]
 pub use ser::to_bytes;
