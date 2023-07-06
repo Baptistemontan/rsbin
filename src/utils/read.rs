@@ -20,18 +20,18 @@ pub trait Read<'de> {
     #[cfg(not(feature = "alloc"))]
     fn read_bytes(&mut self, len: usize) -> Result<&'de [u8], Self::Error>;
 
-    /// The result Cow<[u8]> should end with the last 2 bytes passed to the `end_of_str` callback.
+    /// The result Cow<[u8]> should end with the last 2 bytes passed to the `end_of_bytes` callback.
     #[cfg(feature = "alloc")]
     fn read_bytes_until(
         &mut self,
-        end_of_str: fn(&[u8; 2]) -> bool,
+        end_of_bytes: fn(&[u8; 2]) -> bool,
     ) -> Result<Cow<'de, [u8]>, Self::Error>;
 
-    /// The result Cow<[u8]> should end with the last 2 bytes passed to the `end_of_str` callback.
+    /// The result Cow<[u8]> should end with the last 2 bytes passed to the `end_of_bytes` callback.
     #[cfg(not(feature = "alloc"))]
     fn read_bytes_until(
         &mut self,
-        end_of_str: fn(&[u8; 2]) -> bool,
+        end_of_bytes: fn(&[u8; 2]) -> bool,
     ) -> Result<&'de [u8], Self::Error>;
 }
 
@@ -54,11 +54,11 @@ impl<'de> BuffReader<'de> {
         }
     }
 
-    fn read_until(&mut self, end_of_str: fn(&[u8; 2]) -> bool) -> Result<&'de [u8], EndOfBuff> {
+    fn read_until(&mut self, end_of_bytes: fn(&[u8; 2]) -> bool) -> Result<&'de [u8], EndOfBuff> {
         let len = self
             .buff
             .windows(2)
-            .position(|bytes| end_of_str(bytes.try_into().unwrap()))
+            .position(|bytes| end_of_bytes(bytes.try_into().unwrap()))
             .ok_or(EndOfBuff)?;
         self.pop_slice(len + 2)
     }
@@ -92,17 +92,17 @@ impl<'de> Read<'de> for BuffReader<'de> {
     #[cfg(feature = "alloc")]
     fn read_bytes_until(
         &mut self,
-        end_of_str: fn(&[u8; 2]) -> bool,
+        end_of_bytes: fn(&[u8; 2]) -> bool,
     ) -> Result<Cow<'de, [u8]>, Self::Error> {
-        self.read_until(end_of_str).map(Cow::Borrowed)
+        self.read_until(end_of_bytes).map(Cow::Borrowed)
     }
 
     #[cfg(not(feature = "alloc"))]
     fn read_bytes_until(
         &mut self,
-        end_of_str: fn(&[u8; 2]) -> bool,
+        end_of_bytes: fn(&[u8; 2]) -> bool,
     ) -> Result<&'de [u8], Self::Error> {
-        self.read_until(end_of_str)
+        self.read_until(end_of_bytes)
     }
 }
 
@@ -125,12 +125,12 @@ where
 
     fn read_bytes_until(
         &mut self,
-        end_of_str: fn(&[u8; 2]) -> bool,
+        end_of_bytes: fn(&[u8; 2]) -> bool,
     ) -> Result<Cow<'de, [u8]>, Self::Error> {
         let mut intermidiate = [0; 2];
         self.read_exact(&mut intermidiate)?;
         let mut buff: Vec<u8> = intermidiate.into();
-        while !end_of_str(&intermidiate) {
+        while !end_of_bytes(&intermidiate) {
             intermidiate.swap(0, 1);
             self.read_exact(&mut intermidiate[1..])?;
             buff.push(intermidiate[1]);
